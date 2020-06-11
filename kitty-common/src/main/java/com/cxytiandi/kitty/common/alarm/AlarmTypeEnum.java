@@ -22,7 +22,7 @@ public enum AlarmTypeEnum {
 
     AlarmTypeEnum(String type) {
         this.type = type;
-    };
+    }
 
     private String type;
 
