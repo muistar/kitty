@@ -1,9 +1,5 @@
 package com.cxytiandi.kitty.threadpool;
 
-import com.alibaba.cloud.nacos.NacosConfigProperties;
-import com.alibaba.nacos.api.config.ConfigService;
-import com.alibaba.nacos.api.config.listener.AbstractListener;
-import com.alibaba.nacos.api.exception.NacosException;
 import com.cxytiandi.kitty.threadpool.config.DynamicThreadPoolProperties;
 import com.cxytiandi.kitty.threadpool.config.ThreadPoolProperties;
 import com.cxytiandi.kitty.threadpool.enums.QueueTypeEnum;
@@ -12,6 +8,7 @@ import com.dianping.cat.status.StatusExtension;
 import com.dianping.cat.status.StatusExtensionRegister;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+
 import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -37,9 +34,6 @@ public class DynamicThreadPoolManager {
     @Autowired
     private DynamicThreadPoolProperties dynamicThreadPoolProperties;
 
-    @Autowired
-    private NacosConfigProperties nacosConfigProperties;
-
     /**
      * 存储线程池对象，Key:名称 Value:对象
      */
@@ -53,44 +47,26 @@ public class DynamicThreadPoolManager {
     @PostConstruct
     public void init() {
         createThreadPoolExecutor(dynamicThreadPoolProperties);
-        initConfigUpdateListener(dynamicThreadPoolProperties);
-    }
-
-    /**
-     * 监听配置修改，spring-cloud-alibaba 2.1.0版本不支持@NacosConfigListener的监听
-     */
-    public void initConfigUpdateListener(DynamicThreadPoolProperties dynamicThreadPoolProperties) {
-        ConfigService configService = nacosConfigProperties.configServiceInstance();
-        try {
-            configService.addListener(dynamicThreadPoolProperties.getNacosDataId(), dynamicThreadPoolProperties.getNacosGroup(), new AbstractListener() {
-                @Override
-                public void receiveConfigInfo(String configInfo) {
-                    new Thread(() -> refreshThreadPoolExecutor()).start();
-                    log.info("线程池配置有变化，刷新完成");
-                }
-            });
-        } catch (NacosException e) {
-            log.error("Nacos配置监听异常", e);
-        }
     }
 
     /**
      * 创建线程池
      * @param threadPoolProperties
      */
-    private void createThreadPoolExecutor(DynamicThreadPoolProperties threadPoolProperties) {
+    public void createThreadPoolExecutor(DynamicThreadPoolProperties threadPoolProperties) {
         threadPoolProperties.getExecutors().forEach(executor -> {
-            KittyThreadPoolExecutor threadPoolExecutor = new KittyThreadPoolExecutor(
-                    executor.getCorePoolSize(),
-                    executor.getMaximumPoolSize(),
-                    executor.getKeepAliveTime(),
-                    executor.getUnit(),
-                    getBlockingQueue(executor.getQueueType(), executor.getQueueCapacity(), executor.isFair()),
-                    new KittyThreadFactory(executor.getThreadPoolName()),
-                    getRejectedExecutionHandler(executor.getRejectedExecutionType(), executor.getThreadPoolName()), executor.getThreadPoolName());
+            if (!threadPoolExecutorMap.containsKey(executor.getThreadPoolName())) {
+                KittyThreadPoolExecutor threadPoolExecutor = new KittyThreadPoolExecutor(
+                        executor.getCorePoolSize(),
+                        executor.getMaximumPoolSize(),
+                        executor.getKeepAliveTime(),
+                        executor.getUnit(),
+                        getBlockingQueue(executor.getQueueType(), executor.getQueueCapacity(), executor.isFair()),
+                        new KittyThreadFactory(executor.getThreadPoolName()),
+                        getRejectedExecutionHandler(executor.getRejectedExecutionType(), executor.getThreadPoolName()), executor.getThreadPoolName());
 
-            threadPoolExecutorMap.put(executor.getThreadPoolName(), threadPoolExecutor);
-
+                threadPoolExecutorMap.put(executor.getThreadPoolName(), threadPoolExecutor);
+            }
         });
     }
 
@@ -186,10 +162,12 @@ public class DynamicThreadPoolManager {
     /**
      * 刷新线程池
      */
-    private void refreshThreadPoolExecutor() {
+    public void refreshThreadPoolExecutor(boolean isWaitConfigRefreshOver) {
         try {
-            // 等待配置刷新完成
-            Thread.sleep(1000);
+            if (isWaitConfigRefreshOver) {
+                // 等待Nacos配置刷新完成
+                Thread.sleep(dynamicThreadPoolProperties.getNacosWaitRefreshConfigSeconds() * 1000);
+            }
         } catch (InterruptedException e) {
 
         }
