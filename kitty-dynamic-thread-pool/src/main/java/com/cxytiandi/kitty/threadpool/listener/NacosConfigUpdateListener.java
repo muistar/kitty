@@ -1,6 +1,5 @@
 package com.cxytiandi.kitty.threadpool.listener;
 
-import com.alibaba.cloud.nacos.NacosConfigProperties;
 import com.alibaba.nacos.api.annotation.NacosInjected;
 import com.alibaba.nacos.api.config.ConfigService;
 import com.alibaba.nacos.api.config.listener.AbstractListener;
@@ -28,10 +27,7 @@ import javax.annotation.PostConstruct;
 public class NacosConfigUpdateListener {
 
     @NacosInjected
-    private ConfigService bootConfigService;
-
-    @Autowired(required = false)
-    private NacosConfigProperties nacosConfigProperties;
+    private ConfigService configService;
 
     @Autowired
     private DynamicThreadPoolManager dynamicThreadPoolManager;
@@ -48,15 +44,6 @@ public class NacosConfigUpdateListener {
     }
 
     public void initConfigUpdateListener() {
-        ConfigService configService = null;
-        if (springCloudConfigEnable) {
-            configService = nacosConfigProperties.configServiceInstance();
-        }
-
-        if (configService == null) {
-            configService = bootConfigService;
-        }
-
         Assert.hasText(poolProperties.getNacosDataId(), "请配置kitty.threadpools.nacosDataId");
         Assert.hasText(poolProperties.getNacosGroup(), "请配置kitty.threadpools.nacosGroup");
 
